@@ -1,0 +1,26 @@
+{
+  "name": "focus-scroll-view",
+  "version": "0.1.0",
+  "authors": [
+    "Joseph Carroll <jdsalingerjr@gmail.com>"
+  ],
+  "description": "Highly performant Famo.us scroll view with focus events on active children",
+  "moduleType": [
+    "amd"
+  ],
+  "keywords": [
+    "Famo.us",
+    "\"Scroll",
+    "View\"",
+    "Focus"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/jd-carroll/focus-scroll-view",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
+}

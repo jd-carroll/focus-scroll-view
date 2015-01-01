@@ -1,0 +1,25 @@
+{
+  "name": "focus-scroll-view",
+  "version": "0.1.0",
+  "description": "Highly performant Famo.us scroll view with focus events on active children",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jd-carroll/focus-scroll-view"
+  },
+  "keywords": [
+    "Famo.us",
+    "\"Scroll",
+    "View\"",
+    "Focus"
+  ],
+  "author": "Joseph Carroll <jdsalingerjr@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jd-carroll/focus-scroll-view/issues"
+  },
+  "homepage": "https://github.com/jd-carroll/focus-scroll-view"
+}
