@@ -50,12 +50,12 @@ define(function(require, exports, module) {
 
     function ScrollView(options, layout) {
         // patch options with defaults
-        this.options = Object.create(FocusScrollView.DEFAULT_OPTIONS);
+        this.options = Object.create(ScrollView.DEFAULT_OPTIONS);
         this._optionsManager = new OptionsManager(this.options);
         this.setOptions(options);
         
         // create sub-components
-        layout = layout || FocusScrollView.DEFAULT_LAYOUT;
+        layout = layout || ScrollView.DEFAULT_LAYOUT;
         this.setLayout(layout);
 
         this.sync = new GenericSync(
