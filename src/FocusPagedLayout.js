@@ -22,6 +22,10 @@ define(function(require, exports, module) {
         if (this.options.view) {
             this.options.view._eventInput.on('start', function() {
                 this.velocitySwitch = false;
+                this._touchMove = true;
+            }.bind(this));
+            this.options.view._eventInput.on('end', function() {
+                this._touchMove = false;
             }.bind(this));
         }
 
@@ -82,7 +86,7 @@ define(function(require, exports, module) {
 
         var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
         if (Math.abs(position) - Math.abs(size) < 0) {
-            if (velocitySwitch) {
+            if (this._touchMove && velocitySwitch) {
                 if (!this.velocitySwitch) {
                     next = velocity < 0;
                     previous = velocity > 0;

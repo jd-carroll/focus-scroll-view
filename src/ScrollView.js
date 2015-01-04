@@ -264,7 +264,7 @@ define(function(require, exports, module) {
         this._particle.on('end', function() {
             // This could be dangerous...
             // We could have a situation where the spring was attached once, settled and then attached again
-            console.log('$SETTLE Touch: ' + this._touchMove + ' Edge: ' + this._edgeState);
+            console.error('$SETTLE Touch: ' + this._touchMove + ' Edge: ' + this._edgeState);
             if (this._attachSpring) {
                 if (!this._touchMove && this._edgeState !== ScrollEdgeStates.NONE) {
                     Engine.nextTick(function () {
@@ -384,7 +384,17 @@ define(function(require, exports, module) {
     }
 
     function _shiftOrigin(node, offset) {
+        console.log('$REMOVE_AGENTS Shift Spring: true Drag: true');
+        var velocity = _getVelocity.call(this);
+        var spring = this._springAgent >= 0;
+        var drag = this._dragAgent >= 0;
+        _detachAgents.call(this, true, true);
         _setPosition.call(this, _getPosition.call(this) + offset);
+        if (!this._touchMove) {
+            console.log('$ATTACH_AGENTS Shift Spring: ' + spring + ' Drag: ' + true);
+            _attachAgents.call(this, spring, true);
+            _setVelocity.call(this, velocity);
+        }
 
         if (node) {
             var previousIndex = this._node.getIndex();
