@@ -52,6 +52,16 @@ define(function(require, exports, module) {
         this._optionsManager = new OptionsManager(this.options);
         this.setOptions(options);
         
+        this._eventInput = new EventHandler();
+        this._eventOutput = new EventHandler();
+
+        EventHandler.setInputHandler(this, this._eventInput);
+        EventHandler.setOutputHandler(this, this._eventOutput);
+
+        this.options.layout = {
+            view: this
+        };
+
         // create sub-components
         layout = layout || ScrollView.DEFAULT_LAYOUT;
         this.setLayout(layout);
@@ -68,7 +78,10 @@ define(function(require, exports, module) {
         this._particle = new Particle();
         this._physicsEngine.addBody(this._particle);
 
+        this._springAgent = -1
         this.spring = new Spring();
+
+        this._dragAgent = -1
         this.drag = new Drag({
             forceFunction: Drag.FORCE_FUNCTIONS.QUADRATIC,
             strength: this.options.drag
@@ -96,14 +109,8 @@ define(function(require, exports, module) {
         this._springPosition = 0;
 
         // eventing
-        this._eventInput = new EventHandler();
-        this._eventOutput = new EventHandler();
-
         this._eventInput.pipe(this.sync);
         this.sync.pipe(this._eventInput);
-
-        EventHandler.setInputHandler(this, this._eventInput);
-        EventHandler.setOutputHandler(this, this._eventOutput);
 
         _bindEvents.call(this);
     }
@@ -112,7 +119,7 @@ define(function(require, exports, module) {
         // console.log('$START');
         this._touchMove = true;
         console.log('$REMOVE_AGENTS - START');
-        _detachAgents.call(this);
+        _detachAgents.call(this, true, true);
         this._earlyEnd = false;
 
         if (this.drag.options.strength !== this.options.drag) {
@@ -182,6 +189,7 @@ define(function(require, exports, module) {
         var currPos = _getPosition.call(this);
         _setPosition.call(this, currPos + delta);
 
+        console.log('$NORMALIZE_MOVE');
         _normalizeState.call(this, true);
     }
 
@@ -214,9 +222,10 @@ define(function(require, exports, module) {
         if (velocity < -speedLimit) velocity = -speedLimit;
         else if (velocity > speedLimit) velocity = speedLimit;
 
-        this._attachSpring = true;
-        console.log('$ATTACH_AGENTS - END Spring: ' + (edgeState !== ScrollEdgeStates.NONE));
-        _attachAgents.call(this, edgeState !== ScrollEdgeStates.NONE);
+        var setSpring = edgeState !== ScrollEdgeStates.NONE;
+        this._attachSpring = !setSpring;
+        console.log('$ATTACH_AGENTS - END Spring: ' + setSpring + ' Drag: ' + true);
+        _attachAgents.call(this, setSpring, true);
 
         this._touchVelocity = null;
         _setVelocity.call(this, velocity);
@@ -234,7 +243,7 @@ define(function(require, exports, module) {
         }.bind(this));
 
         this._layout.on('onEdge', function(event) {
-            console.log('$ON_EDGE');
+            console.log('$ON_EDGE Edge: ' + event.edge);
             _handleEdge.call(this, event);
             this._eventOutput.emit('onEdge', event);
         }.bind(this));
@@ -247,6 +256,7 @@ define(function(require, exports, module) {
 
         this._particle.on('update', function(particle) {
             Engine.nextTick(function() {
+                console.log('$NORMALIZE_UPDATE');
                 _normalizeState.call(this, false);
             }.bind(this));
         }.bind(this));
@@ -254,21 +264,24 @@ define(function(require, exports, module) {
         this._particle.on('end', function() {
             // This could be dangerous...
             // We could have a situation where the spring was attached once, settled and then attached again
+            console.log('$SETTLE Touch: ' + this._touchMove + ' Edge: ' + this._edgeState);
             if (this._attachSpring) {
                 if (!this._touchMove && this._edgeState !== ScrollEdgeStates.NONE) {
                     Engine.nextTick(function () {
-                        console.log('$REMOVE_AGENTS - SETTLE(t)');
-                        _detachAgents.call(this);
-                        console.log('$ATTACH_AGENTS - SETTLE Spring: ' + true);
-                        _attachAgents.call(this, true);
+                        console.log('$REMOVE_AGENTS - SETTLE(t) Spring: ' + true + ' Drag: ' + true);
+                        _detachAgents.call(this, true, true);
+                        console.log('$ATTACH_AGENTS - SETTLE Spring: ' + true + ' Drag: ' + false);
+                        _attachAgents.call(this, true, false);
                         this._attachSpring = false;
                     }.bind(this));
                 }
             }
             else {
                 Engine.nextTick(function () {
-                    console.log('$REMOVE_AGENTS - SETTLE(f)');
-                    _detachAgents.call(this);
+                    if (!this._touchMove) {
+                        console.log('$REMOVE_AGENTS - SETTLE(f) Spring: ' + true + ' Drag: ' + true);
+                        _detachAgents.call(this, true, true);
+                    }
                 }.bind(this));
             }
             this._eventOutput.emit('settle');
@@ -276,23 +289,31 @@ define(function(require, exports, module) {
     }
 
     function _attachAgents(spring) {
-        if (spring) {
-            // console.log('Spring attached');
-            this._physicsEngine.attach([this.spring], this._particle);
+        if (spring && this._springAgent === -1) {
+            this._springAgent = this._physicsEngine.attach(this.spring, this._particle);
             this._springAttached = true;
         }
-        else {
-            this._physicsEngine.attach([this.drag, this.friction], this._particle);
+        if (this._dragAgent === -1) {
+            this._dragAgent = this._physicsEngine.attach(this.drag, this._particle);
+            this._frictionAgent = this._physicsEngine.attach(this.friction, this._particle);
         }
     }
 
-    function _detachAgents() {
-        if (this._springAttached) {
-            // console.log('Spring removed');
+    function _detachAgents(spring, drag) {
+        if (spring && this._springAgent >= 0) {
+            this._physicsEngine.detach(this._springAgent);
+            this._springAgent = -1;
+            this._springAttached = false;
         }
-        this._physicsEngine.detachAll();
-        this._springAttached = false;
-        _setVelocity.call(this, 0);
+        if (drag && this._dragAgent >= 0) {
+            this._physicsEngine.detach(this._dragAgent);
+            this._dragAgent = -1;
+
+            _setVelocity.call(this, 0);
+
+            this._physicsEngine.detach(this._frictionAgent);
+            this._frictionAgent = -1;
+        }        
     }
 
     function _handleEdge(event) {
@@ -300,6 +321,11 @@ define(function(require, exports, module) {
 
         if (event.edge === ScrollEdgeStates.NONE) {
             this._scale = this.options.scale;
+
+            if (this._springAttached) {
+                console.log('$REMOVE_AGENTS - Edge Spring: ' + true + ' Drag: ' + false);
+                _detachAgents.call(this, true, false);
+            }
         }
         else {
             this._scale = event.scale;
@@ -321,11 +347,13 @@ define(function(require, exports, module) {
                 options.dampingRatio = event.dampingRatio;
             }
 
-            if (!this._springAttached) {
-                _attachAgents.call(this, true);
+            if (!this._springAttached && !this._touchMove) {
+                console.log('$ATTACH_AGENTS - Edge Spring: ' + true + ' Drag: ' + false);
+                _attachAgents.call(this, true, false);
             }
 
             if (options) {
+                console.log('$SET_SPRING Anchor: ' + options.anchor);
                 this.spring.setOptions(options);
             }
         }
@@ -427,7 +455,7 @@ define(function(require, exports, module) {
         // first return the group to a 0 state
         _setPosition.call(this, 0);
         this._edgeState = ScrollEdgeStates.NONE;
-        _detachAgents.call(this);
+        _detachAgents.call(this, true, true);
 
 
         // then walk from the current index to the desired index
@@ -447,7 +475,10 @@ define(function(require, exports, module) {
 
     ScrollView.prototype.setLayout = function setLayout(layout, options) {
         if (layout instanceof Function) this._layout = new layout(this.options.layout);
-        else this._layout = layout;
+        else {
+            this._layout = layout;
+            this._layout.setOptions(this.options.layout);
+        }
 
         if (options) this.setOptions({layout: options});
     };
@@ -501,6 +532,11 @@ define(function(require, exports, module) {
         // Particle.getPosition should only be called on the commit
         var position = this._particle.getPosition1D();
         this._commitPosition = position;
+        var velocity = _getVelocity.call(this);
+        // if (velocity !== 0 && velocity < 0.001 && !this._touchMove) {
+        //     console.log('Force 0 velocity');
+        //     _setVelocity.call(this, 0);
+        // }
         var scrollTransform;
         if (this.options.direction === Utility.Direction.X) {
             scrollTransform = Transform.translate(position, 0);

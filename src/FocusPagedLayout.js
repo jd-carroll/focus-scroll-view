@@ -19,6 +19,12 @@ define(function(require, exports, module) {
         this._optionsManager = new OptionsManager(this.options);
         if (options) this._optionsManager.setOptions(options);
 
+        if (this.options.view) {
+            this.options.view._eventInput.on('start', function() {
+                this.velocitySwitch = false;
+            }.bind(this));
+        }
+
         this.currFocus = {};
         this._contextSize = [undefined, undefined];
 
@@ -33,7 +39,7 @@ define(function(require, exports, module) {
         direction: Utility.Direction.Y,
         margin: 1000,
         edgeGrip: 0.2,
-        springPeriod: 2000,
+        springPeriod: 400,
         springDamp: 1,
         pageSwitchSpeed: 1
     };
@@ -77,8 +83,11 @@ define(function(require, exports, module) {
         var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
         if (Math.abs(position) - Math.abs(size) < 0) {
             if (velocitySwitch) {
-                next = velocity < 0;
-                previous = velocity > 0;
+                if (!this.velocitySwitch) {
+                    next = velocity < 0;
+                    previous = velocity > 0;
+                    this.velocitySwitch = true;
+                }
             }
             else {
                 next = position < 0.5 * -size;
