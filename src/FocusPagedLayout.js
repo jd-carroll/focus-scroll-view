@@ -14,8 +14,8 @@ define(function(require, exports, module) {
 
     var ScrollEdgeStates = require('./ScrollEdgeStates');
 
-    function FocusScrollLayout(options) {
-        this.options = Object.create(FocusScrollLayout.DEFAULT_OPTIONS);
+    function FocusPagedLayout(options) {
+        this.options = Object.create(FocusPagedLayout.DEFAULT_OPTIONS);
         this._optionsManager = new OptionsManager(this.options);
         if (options) this._optionsManager.setOptions(options);
 
@@ -29,25 +29,28 @@ define(function(require, exports, module) {
         EventHandler.setOutputHandler(this, this._eventOutput);
     }
 
-    FocusScrollLayout.DEFAULT_OPTIONS = {
+    FocusPagedLayout.DEFAULT_OPTIONS = {
         direction: Utility.Direction.Y,
         margin: 1000,
         edgeGrip: 0.2,
-        springPeriod: 300,
+        springPeriod: 2000,
         springDamp: 1,
+        pageSwitchSpeed: 1
     };
 
     function _sizeForDir(size) {
         var dimension = this.options.direction;
-        return (size[dimension] === undefined) ? null : size[dimension];
+        return (size[dimension] === undefined) ? null : size[dimension] || 0;
     }
 
-    function _output(node, position, target, inverse) {
+    function _output(node, position, pageSize, target, inverse) {
         var size = node.getSize();
         size = _sizeForDir.call(this, size);
+        var pSize = _sizeForDir.call(this, pageSize);
         if (inverse) {
-            position -= size;
+            position -= pSize;
         }
+        position += (pSize - size) / 2;
         var transform;
         if (this.options.direction === Utility.Direction.X) {
             transform = Transform.translate(position, 0);
@@ -55,24 +58,45 @@ define(function(require, exports, module) {
         else {
             transform = Transform.translate(0, position);
         }
-        target.push({transform: transform, target: node.render()});
-        return size;
+        target.push({transform: transform, size: pageSize, target: node.render()});
+        return _sizeForDir.call(this, pageSize);
     }
 
-    FocusScrollLayout.prototype.getNormalizedPosition = function getNormalizedPosition(node, position, velocity, clipSize) {
+    FocusPagedLayout.prototype.getNormalizedPosition = function getNormalizedPosition(node, position, velocity, clipSize) {
         var normalized;
+        
         if(window.$prenormalized && velocity !== 0)
             console.log('Normalize - Node: ' + node.getIndex() + ' Position: ' + position + ' Velocity: ' + velocity + ' Clip: ' + clipSize);
 
-        var size = _sizeForDir.call(this, node.getSize());
+        var size = _sizeForDir.call(this, clipSize);
 
-        if (position < -size) {
+        // parameters to determine when to switch
+        var next;
+        var previous;
+
+        var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
+        if (Math.abs(position) - Math.abs(size) < 0) {
+            if (velocitySwitch) {
+                next = velocity < 0;
+                previous = velocity > 0;
+            }
+            else {
+                next = position < 0.5 * -size;
+                previous = position > 0.5 * size;
+            }
+        }
+
+        if (next) {
             normalized = node.getNext();
         }
-        else if (position > 0) {
+        else if (previous) {
             normalized = node.getPrevious();
 
-            if (normalized) size = -_sizeForDir.call(this, normalized.getSize());
+            if (normalized) size = -size;
+        }
+
+        if (this._switching) {
+
         }
 
         if (normalized) console.log('$NORMALIZED - Old: ' + node.getIndex() + ' New: ' + normalized.getIndex()
@@ -80,11 +104,11 @@ define(function(require, exports, module) {
         if (normalized) return {node: normalized, size: size};
     };
 
-    FocusScrollLayout.prototype.setOptions = function setOptions(options) {
+    FocusPagedLayout.prototype.setOptions = function setOptions(options) {
         this._optionsManager.setOptions(options);
     };
 
-    FocusScrollLayout.prototype.renderLayout = function renderLayout(node, position, velocity, clipSize) {
+    FocusPagedLayout.prototype.renderLayout = function renderLayout(node, position, velocity, clipSize) {
         var result = [];
         if (window.$render)
             console.log('Render - Node: ' + node.getIndex() + ' Position: ' + position + ' Velocity: ' + velocity + ' Clip: ' + clipSize);
@@ -92,29 +116,29 @@ define(function(require, exports, module) {
         // focus components
         var prevFocus = this.currFocus;
         this.currFocus = {};
-        if (this._lastEdgeVisible)
-            result = result;
+
+        var currNode = node;
 
         // used to determine edge state
         var firstEdgeVisible;
         var lastEdgeVisible;
 
         var offset = 0;
-        clipSize = _sizeForDir.call(this, clipSize);
-        var totalClip = clipSize +  this.options.margin;
-        var currNode = node;
+        var pageSize = _sizeForDir.call(this, clipSize);
+        var totalClip = pageSize +  this.options.margin;
+
         // always render atleast one node
         do {
-            var elementOffset = _output.call(this, currNode, offset, result, false);
-            if (offset + position < clipSize) {
+            var elementOffset = _output.call(this, currNode, offset, clipSize, result, false);
+            if (offset + position < pageSize) {
                 var visibleArea;
                 // handle first / left side
                 if (position + offset < 0) {
                     visibleArea = -elementOffset - position;
                 }
                 // handle right side
-                else if (offset + elementOffset + position > clipSize) {
-                    visibleArea = clipSize - offset - position;
+                else if (offset + elementOffset + position > pageSize) {
+                    visibleArea = pageSize - offset - position;
                 }
                 else {
                     visibleArea = elementOffset;
@@ -147,7 +171,7 @@ define(function(require, exports, module) {
         }
         while (currNode && offset + position < totalClip);
 
-        if (!currNode && offset + position <= clipSize) {
+        if (!currNode && offset + position <= pageSize) {
             lastEdgeVisible = true;
         }
 
@@ -157,11 +181,11 @@ define(function(require, exports, module) {
             firstEdgeVisible = true;
         }
 
-        var lastEdgePosition = clipSize - offset;
+        var lastEdgePosition = pageSize - offset;
 
         offset = 0;
         while (currNode && -this.options.margin < offset + position) {
-            offset -= _output.call(this, currNode, offset, result, true);
+            offset -= _output.call(this, currNode, offset, clipSize, result, true);
             currNode = currNode.getPrevious ? currNode.getPrevious() : null;
         }
 
@@ -171,6 +195,8 @@ define(function(require, exports, module) {
             period: this.options.springPeriod,
             dampingRatio: this.options.springDamp
         };
+
+        var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
 
         if (firstEdgeVisible || lastEdgeVisible) {
             var edgeStateChanged;
@@ -191,11 +217,18 @@ define(function(require, exports, module) {
                 this._eventOutput.emit('onEdge', edgeEvent);
             }
         }
-        else if (this._edgeState !== ScrollEdgeStates.NONE) {
+        else if (velocitySwitch && this._edgeState !== ScrollEdgeStates.NONE) {
             this._edgeState = ScrollEdgeStates.NONE;
             edgeEvent.edge = this._edgeState,
             this._eventOutput.emit('offEdge', edgeEvent);
         }
+        else if (!velocitySwitch && this._edgeState !== ScrollEdgeStates.OTHER) {
+            this._edgeState = ScrollEdgeStates.OTHER;
+            edgeEvent.edge = this._edgeState,
+            edgeEvent.anchor = [0, 0, 0];
+            this._eventOutput.emit('onEdge', edgeEvent);
+        }
+
 
         if (prevFocus) {
             var outFocusKeys = Object.keys(prevFocus);
@@ -214,5 +247,5 @@ define(function(require, exports, module) {
         return result;
     };
 
-    module.exports = FocusScrollLayout;
+    module.exports = FocusPagedLayout;
 });

@@ -14,12 +14,15 @@ define(function(require, exports, module) {
     var Entity = require('famous/core/Entity');
     var Transform = require('famous/core/Transform');
     var Engine = require('famous/core/Engine');
+    var Vector = require('famous/math/Vector');
+    var Matrix = require('famous/math/Matrix');
 
     var EventHandler = require('famous/core/EventHandler');
     var OptionsManager = require('famous/core/OptionsManager');
     var ViewSequence = require('famous/core/ViewSequence');
     var FocusScrollLayout = require('./FocusScrollLayout');
     var Utility = require('famous/utilities/Utility');
+    var ScrollEdgeStates = require('./ScrollEdgeStates');
 
     var GenericSync = require('famous/inputs/GenericSync');
     var ScrollSync = require('famous/inputs/ScrollSync');
@@ -29,12 +32,7 @@ define(function(require, exports, module) {
     /** @const */
     var TOLERANCE = 0.5;
 
-    /** @enum */
-    var EdgeStates = {
-        FIRST: -1,
-        NONE:  0,
-        LAST:  1
-    };
+    var UNIT_SCALE = new Vector(1, 1, 1);
 
     ScrollView.DEFAULT_LAYOUT = FocusScrollLayout;
 
@@ -43,7 +41,7 @@ define(function(require, exports, module) {
         rails: true,
         direction: Utility.Direction.Y,
         friction: 0.005,
-        drag: 0.0001,
+        drag: -0.0001,
         speedLimit: 5,
         scale: 1
     }
@@ -61,8 +59,8 @@ define(function(require, exports, module) {
         this.sync = new GenericSync(
             this.options.syncs,
             {
-                direction : this.options.direction,
-                rails: this.options.rails
+                // direction : this.options.direction,
+                // rails: this.options.rails
             }
         );
 
@@ -89,7 +87,7 @@ define(function(require, exports, module) {
         this._entityId = Entity.register(this);
 
         // state
-        this._edgeState = EdgeStates.NONE;
+        this._edgeState = ScrollEdgeStates.NONE;
         this._springAttached = false;
         this._node = null;
         this._earlyEnd = false;
@@ -112,6 +110,8 @@ define(function(require, exports, module) {
 
     function _handleStart(event) {
         // console.log('$START');
+        this._touchMove = true;
+        console.log('$REMOVE_AGENTS - START');
         _detachAgents.call(this);
         this._earlyEnd = false;
 
@@ -122,21 +122,34 @@ define(function(require, exports, module) {
     }
 
     function _handleMove(event) {
+        var edgeState = this._edgeState;
+
         // console.log('$MOVE');
-        var velocity = event.velocity;
-        var delta = event.delta;
+        var velocity;
+        var delta;
+        if (this.options.direction == Utility.Direction.X) {
+            delta = event.delta[0];
+            velocity = event.velocity[0];
+        }
+        else {
+            delta = event.delta[1];
+            velocity = event.velocity[1];
+        }
 
         // Scale in the direction of
-        if (this._scale !== 1 && this._edgeState !== EdgeStates.NONE) {
-            if ((delta > 0 && this._edgeState === EdgeStates.FIRST)
-                || (delta < 0 && this._edgeState === EdgeStates.LAST)) {
+        if (this._gripScale !== 1 && this._edgeState !== ScrollEdgeStates.NONE) {
+            if ((delta > 0 && this._edgeState === ScrollEdgeStates.FIRST)
+                || (delta < 0 && this._edgeState === ScrollEdgeStates.LAST)) {
                 velocity *= this._scale;
                 delta *= this._scale;
             }
         }
 
-        if (this._edgeState !== EdgeStates.NONE && event.slip) {
-            if ((velocity < 0 && this._edgeState === EdgeStates.TOP) || (velocity > 0 && this._edgeState === EdgeStates.BOTTOM)) {
+        if (window.$move)
+            console.log('Delta: ' + delta + ' Velocity: ' + velocity);
+
+        if ((edgeState === ScrollEdgeStates.FIRST || edgeState === ScrollEdgeStates.LAST) && event.slip) {
+            if ((velocity < 0 && edgeState === ScrollEdgeStates.FIRST) || (velocity > 0 && edgeState === ScrollEdgeStates.LAST)) {
                 if (!this._earlyEnd) {
                     _handleEnd.call(this, event);
                     this._earlyEnd = true;
@@ -146,7 +159,10 @@ define(function(require, exports, module) {
                 _handleStart.call(this, event);
             }
         }
-        if (this._earlyEnd) return;
+        if (this._earlyEnd) {
+            console.log('$EARLY_END');
+            return;
+        }
 
         if (event.slip) {
             var speedLimit = this.options.speedLimit;
@@ -159,22 +175,35 @@ define(function(require, exports, module) {
             if (delta > deltaLimit) delta = deltaLimit;
             else if (delta < -deltaLimit) delta = -deltaLimit;
         }
+        else {
+            this._touchVelocity = velocity;
+        }
 
         var currPos = _getPosition.call(this);
         _setPosition.call(this, currPos + delta);
 
-        if (this._edgeState === EdgeStates.NONE) _normalizeState.call(this);
+        _normalizeState.call(this, true);
     }
 
     function _handleEnd(event) {
+        var edgeState = this._edgeState;
+
         // console.log('$END');
-        var velocity = event.velocity;
-        var delta = event.delta;
-        
+        var velocity;
+        var delta;
+        if (this.options.direction == Utility.Direction.X) {
+            delta = event.delta[0];
+            velocity = event.velocity[0];
+        }
+        else {
+            delta = event.delta[1];
+            velocity = event.velocity[1];
+        }
+
         // Scale in the direction of
-        if (this._scale !== 1 && this._edgeState !== EdgeStates.NONE) {
-            if ((delta > 0 && this._edgeState === EdgeStates.FIRST)
-                || (delta < 0 && this._edgeState === EdgeStates.LAST)) {
+        if (this._gripScale !== 1 && this._edgeState !== ScrollEdgeStates.NONE) {
+            if ((delta > 0 && this._edgeState === ScrollEdgeStates.FIRST)
+                || (delta < 0 && this._edgeState === ScrollEdgeStates.LAST)) {
                 velocity *= this._scale;
                 delta *= this._scale;
             }
@@ -186,9 +215,12 @@ define(function(require, exports, module) {
         else if (velocity > speedLimit) velocity = speedLimit;
 
         this._attachSpring = true;
-        _attachAgents.call(this, this._edgeState !== EdgeStates.NONE);
+        console.log('$ATTACH_AGENTS - END Spring: ' + (edgeState !== ScrollEdgeStates.NONE));
+        _attachAgents.call(this, edgeState !== ScrollEdgeStates.NONE);
 
+        this._touchVelocity = null;
         _setVelocity.call(this, velocity);
+        this._touchMove = false;
     }
 
     function _bindEvents() {
@@ -202,27 +234,41 @@ define(function(require, exports, module) {
         }.bind(this));
 
         this._layout.on('onEdge', function(event) {
-            // console.log('$ON_EDGE');
+            console.log('$ON_EDGE');
             _handleEdge.call(this, event);
             this._eventOutput.emit('onEdge', event);
         }.bind(this));
 
         this._layout.on('offEdge', function(event) {
-            // console.error('$OFF_EDGE');
+            console.log('$OFF_EDGE');
             _handleEdge.call(this, event);
             this._eventOutput.emit('offEdge', event);
         }.bind(this));
 
         this._particle.on('update', function(particle) {
-            _normalizeState.call(this);
+            Engine.nextTick(function() {
+                _normalizeState.call(this, false);
+            }.bind(this));
         }.bind(this));
 
         this._particle.on('end', function() {
-            if (this._edgeState !== EdgeStates.NONE && this._attachSpring) {
+            // This could be dangerous...
+            // We could have a situation where the spring was attached once, settled and then attached again
+            if (this._attachSpring) {
+                if (!this._touchMove && this._edgeState !== ScrollEdgeStates.NONE) {
+                    Engine.nextTick(function () {
+                        console.log('$REMOVE_AGENTS - SETTLE(t)');
+                        _detachAgents.call(this);
+                        console.log('$ATTACH_AGENTS - SETTLE Spring: ' + true);
+                        _attachAgents.call(this, true);
+                        this._attachSpring = false;
+                    }.bind(this));
+                }
+            }
+            else {
                 Engine.nextTick(function () {
+                    console.log('$REMOVE_AGENTS - SETTLE(f)');
                     _detachAgents.call(this);
-                    _attachAgents.call(this, true);
-                    this._attachSpring = false;
                 }.bind(this));
             }
             this._eventOutput.emit('settle');
@@ -250,63 +296,63 @@ define(function(require, exports, module) {
     }
 
     function _handleEdge(event) {
-        if (event.firstEdgeVisible || event.lastEdgeVisible) {
-            if (this._edgeState === EdgeStates.NONE) {
+        this._edgeState = event.edge;
 
-                // TODO: L2R
-                if (event.firstEdgeVisible) this._edgeState = EdgeStates.FIRST;
-                else this._edgeState = EdgeStates.LAST;
-
-                this._scale = event.edgeGrip;
-
-                // console.log('Spring position: ' + event.position);
-                var springOptions = {
-                    anchor: [event.position, 0, 0],
-                    period: event.springPeriod,
-                    dampingRatio: event.springDamp
-                };
-                this.spring.setOptions(springOptions);
-            }
-        }
-        else if (this._edgeState !== EdgeStates.NONE) {
+        if (event.edge === ScrollEdgeStates.NONE) {
             this._scale = this.options.scale;
-            this._edgeState = EdgeStates.NONE;
+        }
+        else {
+            this._scale = event.scale;
+
+            var options;
+            var springOptions = this.spring.options;
+            var anchor = new Vector(event.anchor);
+            if (!springOptions.anchor || !anchor.equals(springOptions.anchor)) {
+                if (!options) options = {};
+                // console.log('Spring position: ' + anchor);
+                options.anchor = anchor;
+            }
+            if (event.period !== springOptions.period) {
+                if (!options) options = {};
+                options.period = event.period;
+            }
+            if (event.dampingRatio !== springOptions.dampingRatio) {
+                if (!options) options = {};
+                options.dampingRatio = event.dampingRatio;
+            }
+
+            if (!this._springAttached) {
+                _attachAgents.call(this, true);
+            }
+
+            if (options) {
+                this.spring.setOptions(options);
+            }
         }
     }
 
-    function _normalizeState() {
+    function _normalizeState(move) {
         var node = this._node;
         var layout = this._layout;
-        var lastPosition = this._lastPosition;
+        var edgeState = this._edgeState;
 
+        // Don't normalize when we are on an actual edge
+        if (edgeState === ScrollEdgeStates.FIRST || edgeState === ScrollEdgeStates.LAST) {
         // If we get to the edge by momentum, slow even faster
-        if (this._edgeState !== EdgeStates.NONE) {
-            if (this.drag.options.strength !== 0.01) {
+            if (!move && this.drag.options.strength !== 0.01) {
                 this.drag.options.strength = 0.01;
                 this.friction.options.strength = 0.05;
             }
             return;
         }
 
-        var normalized;
         var position = _getPosition.call(this);
-        var size = layout.getNodeSize(node, 0);
-        // console.log('Position: ' + position + ' Last Position: ' + this._lastPosition + ' Size: ' + size);
-        if (position < -size) {
-            if (layout.getNext instanceof Function) normalized = layout.getNext(node, 0);
-            else normalized = node.getNext();
-        } 
-        else if (this._lastPosition <= 0 && position > 0) {
-            if (layout.getPrevious instanceof Function) normalized = layout.getPrevious(node, 0);
-            else normalized = node.getPrevious();
-
-            if (normalized) size = -layout.getNodeSize(normalized, 0);
-        }
+        var velocity = _getVelocity.call(this);
+        var normalized = layout.getNormalizedPosition(node, position, velocity, this._size);
 
         if (normalized) {
-            _shiftOrigin.call(this, normalized, size);
+            _shiftOrigin.call(this, normalized.node, normalized.size);
         }
-        this._lastPosition = _getPosition.call(this);
     }
 
     function _shiftOrigin(node, offset) {
@@ -329,20 +375,26 @@ define(function(require, exports, module) {
     }
 
     function _renderLayout() {
-        var offset = _getPosition.call(this);
+        var position = _getPosition.call(this);
+        var velocity = _getVelocity.call(this);
         var clipSize = this._size;
-        return this._layout.renderLayout(this._node, offset, clipSize);
+        return this._layout.renderLayout(this._node, position, velocity, clipSize);
     }
 
     function _getPosition() {
-        return this._particle.getPosition1D();
+        // Particle.getPosition should only be called on the commit
+        return this._commitPosition;
     };
 
     function _setPosition(x) {
+        this._commitPosition = x;
         this._particle.setPosition1D(x);
     };
 
     function _getVelocity() {
+        if (this._touchVelocity) {
+            return this._touchVelocity;
+        }
         return this._particle.getVelocity1D();
     };
 
@@ -374,7 +426,7 @@ define(function(require, exports, module) {
 
         // first return the group to a 0 state
         _setPosition.call(this, 0);
-        this._edgeState = EdgeStates.NONE;
+        this._edgeState = ScrollEdgeStates.NONE;
         _detachAgents.call(this);
 
 
@@ -405,8 +457,7 @@ define(function(require, exports, module) {
 
         if (options.direction !== undefined) {
             if (options.direction === 'x') options.direction = Utility.Direction.X;
-            else if (options.direction === 'y') options.direction = Utility.Direction.Y;
-            else if (options.direction === 'both') options.direction = undefined;
+            else options.direction = Utility.Direction.Y;
         }
 
         // patch custom options
@@ -447,7 +498,9 @@ define(function(require, exports, module) {
         var origin = context.origin;
         this._size = context.size;
 
-        var position = _getPosition.call(this);
+        // Particle.getPosition should only be called on the commit
+        var position = this._particle.getPosition1D();
+        this._commitPosition = position;
         var scrollTransform;
         if (this.options.direction === Utility.Direction.X) {
             scrollTransform = Transform.translate(position, 0);
