@@ -6,10 +6,11 @@
  * @copyright Joseph Carroll <jdsalingerjr@gmail.com>
  */
 define(function(require, exports, module) {
+    'use strict';
+
     var OptionsManager = require('famous/core/OptionsManager');
     var Transform = require('famous/core/Transform');
     var Utility = require('famous/utilities/Utility');
-    var ViewSequence = require('famous/core/ViewSequence');
     var EventHandler = require('famous/core/EventHandler');
 
     var ScrollEdgeStates = require('./ScrollEdgeStates');
@@ -50,32 +51,30 @@ define(function(require, exports, module) {
 
     function _sizeForDir(size) {
         var dimension = this.options.direction;
-        return (size[dimension] === undefined) ? null : size[dimension] || 0;
+        return size[dimension] === undefined ? null : size[dimension] || 0;
     }
 
     function _output(node, position, pageSize, target, inverse) {
         var size = node.getSize();
         size = _sizeForDir.call(this, size);
         var pSize = _sizeForDir.call(this, pageSize);
-        if (inverse) {
-            position -= pSize;
-        }
+        if (inverse) position -= pSize;
+
         position += (pSize - size) / 2;
         var transform;
-        if (this.options.direction === Utility.Direction.X) {
+        if (this.options.direction === Utility.Direction.X)
             transform = Transform.translate(position, 0);
-        }
-        else {
+        else
             transform = Transform.translate(0, position);
-        }
+
         target.push({transform: transform, size: pageSize, target: node.render()});
         return _sizeForDir.call(this, pageSize);
     }
 
     FocusPagedLayout.prototype.getNormalizedPosition = function getNormalizedPosition(node, position, velocity, clipSize) {
         var normalized;
-        
-        if(window.$prenormalized && velocity !== 0)
+
+        if (window.$prenormalized && velocity !== 0)
             console.log('Normalize - Node: ' + node.getIndex() + ' Position: ' + position + ' Velocity: ' + velocity + ' Clip: ' + clipSize);
 
         var size = _sizeForDir.call(this, clipSize);
@@ -84,7 +83,7 @@ define(function(require, exports, module) {
         var next;
         var previous;
 
-        var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
+        var velocitySwitch = Math.abs(velocity) > this.options.pageSwitchSpeed;
         if (Math.abs(position) - Math.abs(size) < 0) {
             if (this._touchMove && velocitySwitch) {
                 if (!this.velocitySwitch) {
@@ -99,17 +98,12 @@ define(function(require, exports, module) {
             }
         }
 
-        if (next) {
+        if (next)
             normalized = node.getNext();
-        }
         else if (previous) {
             normalized = node.getPrevious();
 
             if (normalized) size = -size;
-        }
-
-        if (this._switching) {
-
         }
 
         if (normalized) console.log('$NORMALIZED - Old: ' + node.getIndex() + ' New: ' + normalized.getIndex()
@@ -138,24 +132,23 @@ define(function(require, exports, module) {
 
         var offset = 0;
         var pageSize = _sizeForDir.call(this, clipSize);
-        var totalClip = pageSize +  this.options.margin;
+        var totalClip = pageSize + this.options.margin;
 
         // always render atleast one node
         do {
             var elementOffset = _output.call(this, currNode, offset, clipSize, result, false);
             if (offset + position < pageSize) {
                 var visibleArea;
+
                 // handle first / left side
-                if (position + offset < 0) {
+                if (position + offset < 0)
                     visibleArea = -elementOffset - position;
-                }
                 // handle right side
-                else if (offset + elementOffset + position > pageSize) {
+                else if (offset + elementOffset + position > pageSize)
                     visibleArea = pageSize - offset - position;
-                }
-                else {
+                else
                     visibleArea = elementOffset;
-                }
+
                 offset += elementOffset;
 
                 // whether or not the whole element is visible
@@ -163,36 +156,34 @@ define(function(require, exports, module) {
                 var visibleElement = currNode.get();
                 var prevElement = prevFocus[visibleElement.id];
                 if (!prevElement || prevElement.visibleArea !== visibleArea) {
-                    if (visibleElement && visibleElement.focus instanceof Function) {
+                    if (visibleElement && visibleElement.focus instanceof Function)
                         visibleElement.focus(isVisible, visibleArea);
-                    }
+
                     this.currFocus[visibleElement.id] = {
                         element: visibleElement,
                         isVisible: isVisible,
                         visibleArea: visibleArea
-                    }
+                    };
                 }
-                else {
+                else
                     this.currFocus[visibleElement.id] = prevElement;
-                }
+
                 prevFocus[visibleElement.id] = undefined;
             }
-            else {
+            else
                 offset += elementOffset;
-            }
+
             currNode = currNode.getNext ? currNode.getNext() : null;
         }
         while (currNode && offset + position < totalClip);
 
-        if (!currNode && offset + position <= pageSize) {
+        if (!currNode && offset + position <= pageSize)
             lastEdgeVisible = true;
-        }
 
         // backwards
-        currNode = (node && node.getPrevious) ? node.getPrevious() : null;
-        if (!currNode && position >= 0) {
+        currNode = node && node.getPrevious ? node.getPrevious() : null;
+        if (!currNode && position >= 0)
             firstEdgeVisible = true;
-        }
 
         var lastEdgePosition = pageSize - offset;
 
@@ -209,7 +200,7 @@ define(function(require, exports, module) {
             dampingRatio: this.options.springDamp
         };
 
-        var velocitySwitch = Math.abs(velocity) >  this.options.pageSwitchSpeed;
+        var velocitySwitch = Math.abs(velocity) > this.options.pageSwitchSpeed;
 
         if (firstEdgeVisible || lastEdgeVisible) {
             var edgeStateChanged;
@@ -226,18 +217,17 @@ define(function(require, exports, module) {
                 edgeEvent.anchor = [0, 0, 0];
                 edgeStateChanged = true;
             }
-            if (edgeStateChanged) {
+            if (edgeStateChanged)
                 this._eventOutput.emit('onEdge', edgeEvent);
-            }
         }
         else if (velocitySwitch && this._edgeState !== ScrollEdgeStates.NONE) {
             this._edgeState = ScrollEdgeStates.NONE;
-            edgeEvent.edge = this._edgeState,
+            edgeEvent.edge = this._edgeState;
             this._eventOutput.emit('offEdge', edgeEvent);
         }
         else if (!velocitySwitch && this._edgeState !== ScrollEdgeStates.OTHER) {
             this._edgeState = ScrollEdgeStates.OTHER;
-            edgeEvent.edge = this._edgeState,
+            edgeEvent.edge = this._edgeState;
             edgeEvent.anchor = [0, 0, 0];
             this._eventOutput.emit('onEdge', edgeEvent);
         }
@@ -250,9 +240,8 @@ define(function(require, exports, module) {
                 var prevFocusItem = prevFocus[prevFocusId];
                 if (prevFocusItem !== undefined) {
                     var prevFocusElement = prevFocusItem.element;
-                    if (prevFocusElement && prevFocusElement.focus instanceof Function) {
+                    if (prevFocusElement && prevFocusElement.focus instanceof Function)
                         prevFocusElement.focus(-1, 0);
-                    }
                 }
             }
         }

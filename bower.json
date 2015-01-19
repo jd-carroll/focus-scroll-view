@@ -5,6 +5,9 @@
     "Joseph Carroll <jdsalingerjr@gmail.com>"
   ],
   "description": "Highly performant Famo.us scroll view with focus events on active children",
+  "scripts": {
+    "postinstall": "bower install"
+  },
   "moduleType": [
     "amd"
   ],
@@ -22,5 +25,8 @@
     "bower_components",
     "test",
     "tests"
-  ]
+  ],
+  "dependencies": {
+    "famous": "~0.3.4"
+  }
 }

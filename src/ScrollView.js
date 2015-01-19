@@ -6,6 +6,8 @@
  * @copyright Joseph Carroll <jdsalingerjr@gmail.com>
  */
 define(function(require, exports, module) {
+    'use strict';
+
     var PhysicsEngine = require('famous/physics/PhysicsEngine');
     var Particle = require('famous/physics/bodies/Particle');
     var Drag = require('famous/physics/forces/Drag');
@@ -15,7 +17,6 @@ define(function(require, exports, module) {
     var Transform = require('famous/core/Transform');
     var Engine = require('famous/core/Engine');
     var Vector = require('famous/math/Vector');
-    var Matrix = require('famous/math/Matrix');
 
     var EventHandler = require('famous/core/EventHandler');
     var OptionsManager = require('famous/core/OptionsManager');
@@ -27,40 +28,19 @@ define(function(require, exports, module) {
     var GenericSync = require('famous/inputs/GenericSync');
     var ScrollSync = require('famous/inputs/ScrollSync');
     var TouchSync = require('famous/inputs/TouchSync');
-    GenericSync.register({scroll : ScrollSync, touch : TouchSync});
-
-    /** @const */
-    var TOLERANCE = 0.5;
-
-    var UNIT_SCALE = new Vector(1, 1, 1);
-
-    ScrollView.DEFAULT_LAYOUT = FocusScrollLayout;
-
-    ScrollView.DEFAULT_OPTIONS = {
-        syncs: ['scroll', 'touch'],
-        rails: true,
-        direction: Utility.Direction.Y,
-        friction: 0.005,
-        drag: -0.0001,
-        speedLimit: 5,
-        scale: 1
-    }
+    GenericSync.register({scroll: ScrollSync, touch: TouchSync});
 
     function ScrollView(options, layout) {
         // patch options with defaults
         this.options = Object.create(ScrollView.DEFAULT_OPTIONS);
         this._optionsManager = new OptionsManager(this.options);
         this.setOptions(options);
-        
+
         this._eventInput = new EventHandler();
         this._eventOutput = new EventHandler();
 
         EventHandler.setInputHandler(this, this._eventInput);
         EventHandler.setOutputHandler(this, this._eventOutput);
-
-        this.options.layout = {
-            view: this
-        };
 
         // create sub-components
         layout = layout || ScrollView.DEFAULT_LAYOUT;
@@ -78,10 +58,10 @@ define(function(require, exports, module) {
         this._particle = new Particle();
         this._physicsEngine.addBody(this._particle);
 
-        this._springAgent = -1
+        this._springAgent = -1;
         this.spring = new Spring();
 
-        this._dragAgent = -1
+        this._dragAgent = -1;
         this.drag = new Drag({
             forceFunction: Drag.FORCE_FUNCTIONS.QUADRATIC,
             strength: this.options.drag
@@ -115,6 +95,18 @@ define(function(require, exports, module) {
         _bindEvents.call(this);
     }
 
+    ScrollView.DEFAULT_LAYOUT = FocusScrollLayout;
+
+    ScrollView.DEFAULT_OPTIONS = {
+        syncs: ['scroll', 'touch'],
+        rails: true,
+        direction: Utility.Direction.Y,
+        friction: 0.005,
+        drag: -0.0001,
+        speedLimit: 5,
+        scale: 1
+    };
+
     function _handleStart(event) {
         // console.log('$START');
         this._touchMove = true;
@@ -124,7 +116,7 @@ define(function(require, exports, module) {
 
         if (this.drag.options.strength !== this.options.drag) {
             this.drag.options.strength = this.options.drag;
-            this.friction.options.strength = this.options.friction
+            this.friction.options.strength = this.options.friction;
         }
     }
 
@@ -134,7 +126,7 @@ define(function(require, exports, module) {
         // console.log('$MOVE');
         var velocity;
         var delta;
-        if (this.options.direction == Utility.Direction.X) {
+        if (this.options.direction === Utility.Direction.X) {
             delta = event.delta[0];
             velocity = event.velocity[0];
         }
@@ -162,7 +154,7 @@ define(function(require, exports, module) {
                     this._earlyEnd = true;
                 }
             }
-            else if (this._earlyEnd && (Math.abs(velocity) > Math.abs(this.getVelocity()))) {
+            else if (this._earlyEnd && Math.abs(velocity) > Math.abs(this.getVelocity())) {
                 _handleStart.call(this, event);
             }
         }
@@ -182,9 +174,7 @@ define(function(require, exports, module) {
             if (delta > deltaLimit) delta = deltaLimit;
             else if (delta < -deltaLimit) delta = -deltaLimit;
         }
-        else {
-            this._touchVelocity = velocity;
-        }
+        else this._touchVelocity = velocity;
 
         var currPos = _getPosition.call(this);
         _setPosition.call(this, currPos + delta);
@@ -199,7 +189,7 @@ define(function(require, exports, module) {
         // console.log('$END');
         var velocity;
         var delta;
-        if (this.options.direction == Utility.Direction.X) {
+        if (this.options.direction === Utility.Direction.X) {
             delta = event.delta[0];
             velocity = event.velocity[0];
         }
@@ -313,7 +303,7 @@ define(function(require, exports, module) {
 
             this._physicsEngine.detach(this._frictionAgent);
             this._frictionAgent = -1;
-        }        
+        }
     }
 
     function _handleEdge(event) {
@@ -387,7 +377,6 @@ define(function(require, exports, module) {
         console.log('$REMOVE_AGENTS Shift Spring: true Drag: true');
         var velocity = _getVelocity.call(this);
         var spring = this._springAgent >= 0;
-        var drag = this._dragAgent >= 0;
         _detachAgents.call(this, true, true);
         _setPosition.call(this, _getPosition.call(this) + offset);
         if (!this._touchMove) {
@@ -404,11 +393,10 @@ define(function(require, exports, module) {
                 this._eventOutput.emit('pageChange', {direction: currIndex - previousIndex, index: currIndex});
             }
             // console.log('Active Index: ' + currIndex);
-        } else {
-            if (this._node) {
-                this._node = null;
-                this._eventOutput.emit('pageChange', {index: currIndex});
-            }
+        }
+        else if (this._node) {
+            this._node = null;
+            this._eventOutput.emit('pageChange', {index: -1});
         }
     }
 
@@ -422,23 +410,23 @@ define(function(require, exports, module) {
     function _getPosition() {
         // Particle.getPosition should only be called on the commit
         return this._commitPosition;
-    };
+    }
 
     function _setPosition(x) {
         this._commitPosition = x;
         this._particle.setPosition1D(x);
-    };
+    }
 
     function _getVelocity() {
         if (this._touchVelocity) {
             return this._touchVelocity;
         }
         return this._particle.getVelocity1D();
-    };
+    }
 
     function _setVelocity(v) {
         this._particle.setVelocity1D(v);
-    };
+    }
 
     ScrollView.prototype.getActiveIndex = function getActiveIndex() {
         if (this._node) return this._node.getIndex();
@@ -484,22 +472,25 @@ define(function(require, exports, module) {
     };
 
     ScrollView.prototype.setLayout = function setLayout(layout, options) {
+        if (options) this.setOptions({layout: options});
+
         if (layout instanceof Function) this._layout = new layout(this.options.layout);
         else {
             this._layout = layout;
             this._layout.setOptions(this.options.layout);
         }
-
-        if (options) this.setOptions({layout: options});
     };
 
     ScrollView.prototype.setOptions = function setOptions(options) {
         if (!options) return;
 
-        if (options.direction !== undefined) {
-            if (options.direction === 'x') options.direction = Utility.Direction.X;
-            else options.direction = Utility.Direction.Y;
-        }
+        options.layout = options.layout || {};
+
+        if (options.direction === 'x') options.direction = Utility.Direction.X;
+        else options.direction = Utility.Direction.Y;
+
+        options.layout.direction = options.direction;
+        options.layout.view = this;
 
         // patch custom options
         this._optionsManager.setOptions(options);
@@ -514,8 +505,8 @@ define(function(require, exports, module) {
         // sync sub-component
         if ((options.rails !== undefined || options.direction !== undefined || options.syncScale !== undefined) && this.sync) {
             this.sync.setOptions({
-                direction : this.options.direction,
-                scale : this.options.syncScale,
+                direction: this.options.direction,
+                scale: this.options.syncScale,
                 rails: this.options.rails
             });
         }
@@ -542,18 +533,14 @@ define(function(require, exports, module) {
         // Particle.getPosition should only be called on the commit
         var position = this._particle.getPosition1D();
         this._commitPosition = position;
-        var velocity = _getVelocity.call(this);
+        // var velocity = _getVelocity.call(this);
         // if (velocity !== 0 && velocity < 0.001 && !this._touchMove) {
         //     console.log('Force 0 velocity');
         //     _setVelocity.call(this, 0);
         // }
         var scrollTransform;
-        if (this.options.direction === Utility.Direction.X) {
-            scrollTransform = Transform.translate(position, 0);
-        }
-        else {
-            scrollTransform = Transform.translate(0, position);
-        }
+        if (this.options.direction === Utility.Direction.X) scrollTransform = Transform.translate(position, 0);
+        else scrollTransform = Transform.translate(0, position);
 
         return {
             transform: Transform.multiply(transform, scrollTransform),
